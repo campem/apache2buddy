@@ -768,7 +768,8 @@ sub get_memory_usage {
 	my (@proc_mem_usages, $result);
 
 	# get a list of the pid's for apache running as the appropriate user
-	my @pids = `ps aux | grep $process_name | grep -v root | grep $apache_user | awk \'{ print \$2 }\'`;
+	# my @pids = `ps aux | grep $process_name | grep -v root | grep $apache_user | awk \'{ print \$2 }\'`;
+	my @pids = `ps aux | grep $process_name | grep $apache_user | awk \'{ print \$2 }\'`;
 
         # if length of @pids is still zero then die with an error.
 	if (@pids == 0) {
@@ -1916,12 +1917,13 @@ sub preflight_checks {
 	detect_additional_services();
         
 	# Check 17d : Large Logs in /var/log
-	systemcheck_large_logs($DT_PATH."/var/log/httpd");
-	systemcheck_large_logs($DT_PATH."/var/log/apache2");
-	systemcheck_large_logs($DT_PATH."/var/log/php-fpm");
-	systemcheck_large_logs($DT_PATH."/usr/local/apache/logs");
-	systemcheck_large_logs($DT_PATH."/usr/local/apache2/logs");
-	systemcheck_large_logs($DT_PATH."/usr/local/httpd/logs");
+	systemcheck_large_logs("/var/log/httpd");
+	systemcheck_large_logs("/var/log/httpd24");
+	systemcheck_large_logs("/var/log/apache2");
+	systemcheck_large_logs("/var/log/php-fpm");
+	systemcheck_large_logs("/usr/local/apache/logs");
+	systemcheck_large_logs("/usr/local/apache2/logs");
+	systemcheck_large_logs("/usr/local/httpd/logs");
 
 	# Check 19 : Maxclients Hits
 	# This has been abstracted out into a separate subroutine
@@ -2019,9 +2021,9 @@ sub detect_php_fatal_errors {
 	}
 
 	if ($process_name eq $DT_PATH."/usr/sbin/httpd" ) {
-		our $SCANDIR = $DT_PATH."/var/log/httpd/";
+		our $SCANDIR = "/var/log/httpd24/";
         } elsif ($process_name eq $DT_PATH."/usr/local/apache/bin/httpd" ) {
-		our $SCANDIR = $DT_PATH."/usr/local/apache/logs/";
+		our $SCANDIR = "/usr/local/apache/logs/";
         } else {
 		our $SCANDIR = $DT_PATH."/var/log/apache2/";
         }
