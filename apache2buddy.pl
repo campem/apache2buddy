@@ -1708,7 +1708,9 @@ sub preflight_checks {
 				our $pidfile = "/var/run/apache2.pid";
 			} else {
 				# CentOS7 always returns CONFIG NOT FOUND, but we know the PID exists.
-				our $pidguess = "/var/run/httpd/httpd.pid";
+				# Next line changed to support RH setup for David's Tea
+				# our $pidguess = "/var/run/httpd/httpd.pid";
+				our $pidguess = "/opt/rh/httpd24/root/var/run/httpd/httpd.pid";
 				if ( -f  $pidguess ) {
 					our $pidfile = $pidguess;
 				} else {
