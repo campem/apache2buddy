@@ -1374,6 +1374,8 @@ sub preflight_checks {
 	# There will be other showstoppers that become apparent as the script develops in execution,
 	# however we can capture the common "basic errors" here, and gracefully exit with useful errors.
 	
+	our $DT_PATH = "/opt/rh/httpd24/root";
+	
 	# Check 1
 	# make sure the script is being run as root.
 	# we need to run as root to ensure that we can access all of the appropriate
@@ -1710,7 +1712,7 @@ sub preflight_checks {
 				# CentOS7 always returns CONFIG NOT FOUND, but we know the PID exists.
 				# Next line changed to support RH setup for David's Tea
 				# our $pidguess = "/var/run/httpd/httpd.pid";
-				our $pidguess = "/opt/rh/httpd24/root/var/run/httpd/httpd.pid";
+				our $pidguess = $DT_PATH."/var/run/httpd/httpd.pid";
 				if ( -f  $pidguess ) {
 					our $pidfile = $pidguess;
 				} else {
@@ -1912,14 +1914,14 @@ sub preflight_checks {
 	# Check 17c : Other Services
 	# This has been abstracted out into a separate subroutine
 	detect_additional_services();
-
+        
 	# Check 17d : Large Logs in /var/log
-	systemcheck_large_logs("/var/log/httpd");
-	systemcheck_large_logs("/var/log/apache2");
-	systemcheck_large_logs("/var/log/php-fpm");
-	systemcheck_large_logs("/usr/local/apache/logs");
-	systemcheck_large_logs("/usr/local/apache2/logs");
-	systemcheck_large_logs("/usr/local/httpd/logs");
+	systemcheck_large_logs($DT_PATH."/var/log/httpd");
+	systemcheck_large_logs($DT_PATH."/var/log/apache2");
+	systemcheck_large_logs($DT_PATH."/var/log/php-fpm");
+	systemcheck_large_logs($DT_PATH."/usr/local/apache/logs");
+	systemcheck_large_logs($DT_PATH."/usr/local/apache2/logs");
+	systemcheck_large_logs($DT_PATH."/usr/local/httpd/logs");
 
 	# Check 19 : Maxclients Hits
 	# This has been abstracted out into a separate subroutine
@@ -2016,19 +2018,19 @@ sub detect_php_fatal_errors {
 		return;
 	}
 
-	if ($process_name eq "/usr/sbin/httpd" ) {
-		our $SCANDIR = "/var/log/httpd/";
-        } elsif ($process_name eq "/usr/local/apache/bin/httpd" ) {
-		our $SCANDIR = "/usr/local/apache/logs/";
+	if ($process_name eq $DT_PATH."/usr/sbin/httpd" ) {
+		our $SCANDIR = $DT_PATH."/var/log/httpd/";
+        } elsif ($process_name eq $DT_PATH."/usr/local/apache/bin/httpd" ) {
+		our $SCANDIR = $DT_PATH."/usr/local/apache/logs/";
         } else {
-		our $SCANDIR = "/var/log/apache2/";
+		our $SCANDIR = $DT_PATH."/var/log/apache2/";
         }
 	our $SCANDIR;
 	our %logfile_counts;
 	grep_php_fatal($SCANDIR);
 
 	if ($phpfpm_detected) {
-		our $SCANDIR = "/var/log/php-fpm/";
+		our $SCANDIR = $DT_PATH."/var/log/php-fpm/";
 		our %logfile_counts;
 		grep_php_fatal($SCANDIR);
 	}
@@ -2087,7 +2089,7 @@ sub detect_maxclients_hits {
 	} elsif ($process_name eq "/usr/local/apache/bin/httpd") {
 		our $maxclients_hits = `grep -i reached /usr/local/apache/logs/error_log | egrep -v "mod" | tail -5`;
 	} else {
-		our $maxclients_hits = `grep -i reached /var/log/apache2/error.log | egrep -v "mod" | tail -5`;
+		our $maxclients_hits = `grep -i reached /var/log/apache2/F | egrep -v "mod" | tail -5`;
 	}
 	our $maxclients_hits;
 	if ($maxclients_hits) {
