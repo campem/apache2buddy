@@ -205,7 +205,7 @@ our $SKIPPHPFATAL = 0;
 # by default, do not skip updates check 
 our $SKIPUPDATES = 0;
 
-our $DT_PATH; = "/opt/rh/httpd24/root";
+our $DT_PATH = "/opt/rh/httpd24/root";
 
 # grab the command line arguments
 GetOptions(
@@ -2016,7 +2016,7 @@ sub detect_plesk_version {
 sub detect_php_fatal_errors {
 	print "VERBOSE: Checking logs for PHP Fatal Errors, this can take some time...\n" if $main::VERBOSE;
 	our $phpfpm_detected;
-	our $DT_PATH
+	our $DT_PATH;
 	our ($model, $process_name) = @_;
 	if ($model eq "worker") {
 		return;
