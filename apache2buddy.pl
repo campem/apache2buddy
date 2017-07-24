@@ -341,7 +341,7 @@ sub check_os_support {
 	my %rol = map { $_ => 1 } @redhat_os_list;
 
 	# https://wiki.debian.org/DebianReleases
-	my @debian_supported_versions = ('7','8');
+	my @debian_supported_versions = ('8','9');
 	my %dsv = map { $_ => 1 } @debian_supported_versions;
 
 	# https://www.ubuntu.com/info/release-end-of-life
@@ -366,8 +366,7 @@ sub check_os_support {
 				show_crit_box(); print "${RED}This distro version (${CYAN}$version${ENDC}${RED}) is not supported by apache2buddy.pl.${ENDC}\n";
 				# list supported debian versions
 				if ( ! $NOINFO ) { show_advisory_box(); print "${YELLOW}Supported Debian versions:${ENDC} '${CYAN}" . join("${ENDC}', '${CYAN}", @debian_supported_versions) . "${ENDC}'.\n"}
-				if ( ! $NOINFO ) { show_advisory_box(); print "${YELLOW}Allowing to run while we iron out bugs, but know that in future this will abort the script.${ENDC}\n" }
-				#exit;
+				exit;
 			}
 		} elsif  (exists($uol{$distro})) {
 			if (exists($usv{$version})) {
@@ -376,8 +375,7 @@ sub check_os_support {
 				show_crit_box(); print "${RED}This distro version (${CYAN}$version${ENDC}${RED}) is not supported by apache2buddy.pl.${ENDC}\n";
 				# list supported debian versions
 				if ( ! $NOINFO ) { show_advisory_box(); print "${YELLOW}Supported Ubuntu (LTS ONLY) versions:${ENDC} '${CYAN}" . join("${ENDC}', '${CYAN}", @ubuntu_supported_versions) . "${ENDC}'.\n"}
-				if ( ! $NOINFO ) { show_advisory_box(); print "${YELLOW}Allowing to run while we iron out bugs, but know that in future this will abort the script.${ENDC}\n" }
-				#exit;
+				exit;
 			}
 		} elsif (exists($rol{$distro})) {
 			# for red hat versions is not so clinical regarding the specific versions, however we need to be mindful of EOL versions eg RHEL 3, 4, 5
@@ -394,8 +392,7 @@ sub check_os_support {
 			if ( $VERBOSE ) { print "VERBOSE -> Major RedHat Version Detected ". $major_redhat_version . "\n"}
 			if ($major_redhat_version lt 6 ) {
 				show_crit_box(); print "${RED}This distro version (${CYAN}$version${ENDC}${RED}) is not supported by apache2buddy.pl.${ENDC}\n";
-				if ( ! $NOINFO ) { show_advisory_box(); print "${YELLOW}Allowing to run while we iron out bugs, but know that in future this will abort the script.${ENDC}\n" }
-				#exit;
+				exit;
 			} else {
 				if ( ! $NOOK ) { show_ok_box(); print "This distro version is supported by apache2buddy.pl.\n" }
 			}
@@ -404,8 +401,7 @@ sub check_os_support {
 		show_crit_box(); print "${RED}This distro is not supported by apache2buddy.pl.${ENDC}\n";
 		# list supported OS distros
 		if ( ! $NOINFO ) { show_advisory_box(); print "${YELLOW}Supported Distro's:${ENDC} '${CYAN}" . join("${ENDC}', '${CYAN}", @supported_os_list) . "${ENDC}'.\n"}
-		if ( ! $NOINFO ) { show_advisory_box(); print "${YELLOW}Allowing to run while we iron out bugs, but know that in future this would have aborted the script.${ENDC}\n" }
-		#exit;
+		exit;
        }
 }
 
@@ -1069,6 +1065,7 @@ sub get_apache_uptime {
 	my $uptime = `ps -eo \"\%p \%t\" | grep $pid | grep -v grep | awk \'{ print \$2 }\'`;
 	chomp($uptime);
 
+	print "VERBOSE: PID passed to uptime function: $pid\n" if $main::VERBOSE;
 	print "VERBOSE: Raw uptime: $uptime\n" if $main::VERBOSE;
 
 	# check to see if we've been running for multiple days
@@ -1112,11 +1109,35 @@ sub get_php_setting {
 
 	# this will return an array with all of the local and global PHP 
 	# settings
-	my @php_config_array = `php -r "phpinfo(4);"`;
+	
+	# code to address bug raised in issue #197 (cli memory limits on debian / ubuntu)
+	# sanity check if we are using cli or apache 
+	my $config = `php -r "phpinfo(1);" | grep -i config | grep -i loaded`;
+	chomp ($config);
+	if ($VERBOSE) { print "VERBOSE: PHP: $config\n" }
+
+	if ( $config =~ /cli/ ) {
+		if ($VERBOSE) { print "VERBOSE: PHP: Attempting to find real apache php.ini file...\n" }
+		# try to find the apache2 one
+		if ( -f "/etc/php/7.0/apache2/php.ini") {
+			our $real_config = "/etc/php/7.0/apache2/php.ini";
+		} elsif ( -f "/etc/php5/apache2/php.ini" ) {
+			our $real_config = "/etc/php5/apache2/php.ini";
+		} elsif ( -f "/etc/php/7.0/fpm/php.ini") {
+			our $real_config = "/etc/php/7.0/fpm/php.ini";
+		}
+
+		our $real_config;
+		if ($VERBOSE) { print "VERBOSE: PHP: Real apache php.ini file is $real_config, using that...\n" }
+		our @php_config_array = `php -c $real_config -r "phpinfo(4);"`;
+	} else {
+		our @php_config_array = `php -r "phpinfo(4);"`;
+	}
 
 	my @results;
 
 	# search the array for our desired setting
+	our @php_config_array;
 	foreach (@php_config_array) {
 		chomp($_);
 		if ( $_ =~ m/^\s*$element\s*/ ) {
@@ -1474,7 +1495,23 @@ sub preflight_checks {
                 if ( ! $NOOK ) { show_ok_box(); print "The utility 'apachectl' exists and is available for use: ${CYAN}$apachectl${ENDC}\n" }
         }
 
+	# check 3.2 
+	# Check for python (new in Debian 9  as it doesnt come with it out of the box)
+	our $python = `which python`;
+	chomp($python);
+
+
+	if ( $python !~ m/.*\/python/ ) {
+		show_crit_box(); 
+		print "Unable to locate the python binary. This script requires python to determine the Operating and Version.\n";
+		show_info_box(); print "${YELLOW}To fix this make sure the python package is installed.${ENDC}\n";
+		exit;
+	} else {
+		if ( ! $NOOK ) { show_ok_box(); print "The 'python' binary exists and is available for use: ${CYAN}$python${ENDC}\n" }
+	}
+
 	
+
 	# Check 4
 	# Check for valid port
 	if ( $port < 0 || $port > 65534 ) {
@@ -1497,8 +1534,6 @@ sub preflight_checks {
 		if ( ! $NOINFO ) { show_info_box(); print "Distro: ${CYAN}" . $distro . "${ENDC}\n"}	
 		if ( ! $NOINFO ) { show_info_box(); print "Version: ${CYAN}" . $version . "${ENDC}\n"}	
 		if ( ! $NOINFO ) { show_info_box(); print "Codename: ${CYAN}" . $codename . "${ENDC}\n"}	
-		if ( ! $NOINFO ) { show_advisory_box(); print "${YELLOW}New OS/Version verification checks are being worked on, you may get errors and teething problems. 02-04-2017${ENDC}\n"}
-		if ( ! $NOINFO ) { show_advisory_box(); print "${YELLOW}Apologies for any inconvenience, this message will disappear when all issues resolved. 02-04-2017${ENDC}\n"}
 		check_os_support($distro, $version, $codename);
 	} else {
 		# fallback when python fails to deliver - eg on CentOS5 which is EOL anyway, we get:
@@ -1608,16 +1643,8 @@ sub preflight_checks {
 	
 
 	# Check 8
-	# determine the Apache uptime
-	our @apache_uptime = get_apache_uptime($pid);
-	
-	if ( ! $NOINFO ) { show_info_box(); print "Apache has been running ${CYAN}$apache_uptime[0]${ENDC}d ${CYAN}$apache_uptime[1]${ENDC}h ${CYAN}$apache_uptime[2]${ENDC}m ${CYAN}$apache_uptime[3]${ENDC}s.\n" }
-	if ( $apache_uptime[0] == "0" ) { 
-		if ( ! $NOWARN ) { 
-			show_crit_box(); print "${RED}*** LOW UPTIME ***${ENDC}.\n"; 
-			show_advisory_box(); print "${YELLOW}The following recommendations may be misleading - apache has been restarted within the last 24 hours.${ENDC}\n";
-		}
-	}
+	# Due to logic error, moved this check to 13.2
+	# Check apache uptime needs parent PID not a child pid.
 
 	# Check 9
 	# find the apache root	
@@ -1710,17 +1737,33 @@ sub preflight_checks {
 				our $pidfile = "/var/run/apache2/apache2.pid";
 			} elsif ($pidfile_cfv eq "/var/run/apache2\$SUFFIX.pid") {
 				our $pidfile = "/var/run/apache2.pid";
+			} elsif ($pidfile_cfv eq "/var/run/apache2\$SUFFIX/apache2.pid") {
+				our $pidfile = "/var/run/apache2/apache2.pid";
 			} else {
-				# CentOS7 always returns CONFIG NOT FOUND, but we know the PID exists.
-				# Next line changed to support RH setup for David's Tea
-				# our $pidguess = "/var/run/httpd/httpd.pid";
-				our $pidguess = $DT_PATH."/var/run/httpd/httpd.pid";
-				if ( -f  $pidguess ) {
-					our $pidfile = $pidguess;
-				} else {
-					show_crit_box; print "${RED}Unable to locate pid file${ENDC}. Exiting.\n"; 
-					exit;
-				}
+                                # CentOS7 always returns CONFIG NOT FOUND, but we know the PID exists.
+                                # Next line changed to support RH setup for David's Tea
+                                # our $pidguess = "/var/run/httpd/httpd.pid";
+                                our $pidguess = $DT_PATH."/var/run/httpd/httpd.pid";
+
+				# revert to a find command as a last ditch effort to find the pid
+				if ($VERBOSE) { print "VERBOSE: Looking for pid file ..." }
+                                if ( -d "/var/run/apache2") {
+                                        our $pidguess = `find /var/run/apache2 | grep pid`;
+                                } elsif ( -d "/var/run/httpd") {
+                                        our $pidguess = `find /var/run/httpd | grep pid`;
+                                } else {
+                                        show_crit_box; print "${RED}Unable to locate pid file${ENDC}. Exiting.\n";
+                                        exit;
+                                }
+                                our $pidguess;
+                                chomp($pidguess);
+                                if ( -f $pidguess ) {
+                                        our $pidfile = $pidguess;
+                                        if ($VERBOSE) { print "VERBOSE: Located pidfile at $pidfile." }
+                                } else {
+                                        show_crit_box; print "${RED}Unable to locate pid file${ENDC}. Exiting.\n";
+                                        exit;
+                                }
 			}
 		}
 	
@@ -1750,7 +1793,20 @@ sub preflight_checks {
 		}
 	}
 
+	# Check 13.2
+	# determine the Apache uptime
+	our $parent_pid;
+	our @apache_uptime = get_apache_uptime($parent_pid);
+	
+	if ( ! $NOINFO ) { show_info_box(); print "Apache has been running ${CYAN}$apache_uptime[0]${ENDC}d ${CYAN}$apache_uptime[1]${ENDC}h ${CYAN}$apache_uptime[2]${ENDC}m ${CYAN}$apache_uptime[3]${ENDC}s.\n" }
+	if ( $apache_uptime[0] == "0" ) { 
+		if ( ! $NOWARN ) { 
+			show_crit_box(); print "${RED}*** LOW UPTIME ***${ENDC}.\n"; 
+			show_advisory_box(); print "${YELLOW}The following recommendations may be misleading - apache has been restarted within the last 24 hours.${ENDC}\n";
+		}
+	}
 
+	# check 13.3
 	# figure out how much RAM is in the server
 	our $available_mem = `LANGUAGE=en_GB.UTF-8 free | grep \"Mem:\" | awk \'{ print \$2 }\'` / 1024;
 	$available_mem = floor($available_mem);
@@ -1901,6 +1957,7 @@ sub preflight_checks {
 	# check #17a-1 detect control panels 
 	detect_plesk_version();
 	detect_cpanel_version();
+	detect_virtualmin_version();
 
 	# Check 17b
 	# Display the php memory limit
@@ -1956,8 +2013,8 @@ sub preflight_checks {
 sub detect_package_updates {
 	my ($distro, $version, $codename) = get_os_platform();
 	our $package_update = 0;
-	if ($distro eq "Ubuntu" or $distro eq "Debian" ) {
-		$package_update = `apt-get update 2>&1 >/dev/null && dpkg --get-selections | xargs LANGUAGE=en_GB.UTF-8 apt-cache policy {} | grep -1 Installed | sed -r 's/(:|Installed: |Candidate: )//' | uniq -u | tac | sed '/--/I,+1 d' | tac | sed '\$d' | sed -n 1~2p | egrep "^php|^apache2"`;
+	if (ucfirst($distro) eq "Ubuntu" or ucfirst($distro) eq "Debian" ) {
+		$package_update = `apt-get update 2>&1 >/dev/null && dpkg --get-selections | xargs apt-cache policy | grep -1 Installed | sed -r 's/(:|Installed: |Candidate: )//' | uniq -u | tac | sed '/--/I,+1 d' | tac | sed '\$d' | sed -n 1~2p | egrep "^php|^apache2"`;
 	} else {
 		$package_update = `yum check-update | egrep "^httpd|^php"`;
 	}
@@ -2012,6 +2069,22 @@ sub detect_plesk_version {
 	}
 }
 
+sub detect_virtualmin_version {
+	our $vmin = 0;
+	our $vmin = 1 if -f "/usr/sbin/virtualmin";
+	if ($vmin) {
+		my $vmin_version = 0;
+		$vmin_version = `/usr/sbin/virtualmin info | grep "virtualmin version" | awk -F":" '{ print \$2}'`;
+		chomp($vmin_version);
+		my $wmin_version = 0;
+		$wmin_version = `/usr/sbin/virtualmin info | grep "webmin version" | awk -F":" '{ print \$2}'`;
+		chomp($wmin_version);
+		if ( ! $NOINFO ) { show_info_box(); print "Virtualmin Version: ${CYAN}$vmin_version${ENDC}\n" }
+		if ( ! $NOINFO ) { show_info_box(); print "Webmin Version: ${CYAN}$wmin_version${ENDC}\n" }
+	} else {
+		if ( ! $NOINFO ) { show_info_box(); print "This server is NOT running Virtualmin.\n" }
+	}
+}
 
 sub detect_php_fatal_errors {
 	print "VERBOSE: Checking logs for PHP Fatal Errors, this can take some time...\n" if $main::VERBOSE;
@@ -2073,8 +2146,8 @@ sub grep_php_fatal {
         foreach my $file (@logfile_list) {
                 our $phpfatalerror_hits = 0;
                 open(FILE, $file);
-                foreach my $line (<FILE>) {
-                        $phpfatalerror_hits++ if $line =~ /php fatal/i;
+                while (<FILE>) {
+                        $phpfatalerror_hits++ if $_ =~ /php fatal/i;
                 }
                 close(FILE);
                 if ($phpfatalerror_hits) {  $logfile_counts{ $file } =  $phpfatalerror_hits }
